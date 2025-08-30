@@ -1,0 +1,201 @@
+
+// Main.java
+package visao;
+
+import modelo.*;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+
+public class Main extends JFrame {
+    private String jogadorNome;
+    private NaveEspacial nave;
+    private final ArrayList<Inimigo> inimigos = new ArrayList<>();
+    private final ArrayList<Tiro> tiros = new ArrayList<>();
+    private final ArrayList<Tiro> tirosInimigos = new ArrayList<>();
+    private ArrayList<Estrela> estrelas = new ArrayList<>();
+    private final JPanel painel;
+    private JLabel labelPontuacao;
+    private boolean jogoAtivo = true;
+    private int pontuacao = 0;
+    private static final int LIMITE_INIMIGOS = 20;
+
+    public Main() {
+        jogadorNome = JOptionPane.showInputDialog("Digite seu nome:");
+        setTitle("Jogo de Nave Espacial - Piloto: " + jogadorNome);
+        setSize(800, 600);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+        setResizable(false);
+
+        painel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                g.setColor(Color.BLACK);
+                g.fillRect(0, 0, getWidth(), getHeight());
+
+                g.setColor(Color.WHITE);
+                for (Estrela estrela : estrelas) {
+                    g.fillOval(estrela.getX(), estrela.getY(), 3, 3);
+                }
+
+                if (jogoAtivo && nave != null) {
+                    g.setColor(nave.getCor());
+                    g.fillPolygon(nave.getXPoints(), nave.getYPoints(), 3);
+                }
+
+                g.setColor(Color.YELLOW);
+                for (Tiro tiro : tiros) {
+                    g.fillRect(tiro.getPosX(), tiro.getPosY(), 5, 10);
+                }
+
+                g.setColor(Color.RED);
+                for (Tiro tiroInimigo : tirosInimigos) {
+                    g.fillRect(tiroInimigo.getPosX(), tiroInimigo.getPosY(), 5, 10);
+                }
+
+                for (Inimigo inimigo : inimigos) {
+                    if (inimigo.getTipo() == 0) {
+                        g.setColor(Color.GRAY);
+                        g.fillRect(inimigo.getPosX(), inimigo.getPosY(), 30, 30);
+                    } else {
+                        g.setColor(Color.RED);
+                        int[] xPoints = { inimigo.getPosX(), inimigo.getPosX() + 15, inimigo.getPosX() + 30 };
+                        int[] yPoints = { inimigo.getPosY(), inimigo.getPosY() + 30, inimigo.getPosY() };
+                        g.fillPolygon(xPoints, yPoints, 3);
+                    }
+                }
+            }
+        };
+
+        labelPontuacao = new JLabel("Pontuação: 0");
+        labelPontuacao.setForeground(Color.WHITE);
+        painel.setLayout(new BorderLayout());
+        painel.add(labelPontuacao, BorderLayout.NORTH);
+
+        add(painel);
+        iniciarNave();
+        iniciarAmbiente();
+        configurarControles();
+        iniciarMovimentacao();
+        setVisible(true);
+    }
+
+    private void iniciarNave() {
+        String escolha = JOptionPane.showInputDialog("Escolha sua nave:\n1 - Ataque\n2 - Defesa\n3 - Exploradora");
+        switch (escolha) {
+            case "1" -> nave = new NaveAtaque(375, 500);
+            case "2" -> nave = new NaveDefesa(375, 500);
+            case "3" -> nave = new NaveExploradora(375, 500);
+            default -> nave = new NaveAtaque(375, 500);
+        }
+    }
+
+    private void iniciarAmbiente() {
+        estrelas = new ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            estrelas.add(new Estrela(getWidth()));
+        }
+
+        Timer ambienteTimer = new Timer(50, e -> {
+            for (Estrela estrela : estrelas) estrela.mover();
+            painel.repaint();
+        });
+        ambienteTimer.start();
+    }
+
+    private void configurarControles() {
+        addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (jogoAtivo && nave != null) {
+                    switch (e.getKeyCode()) {
+                        case KeyEvent.VK_A -> nave.mover('L');
+                        case KeyEvent.VK_D -> nave.mover('R');
+                        case KeyEvent.VK_W -> nave.mover('U');
+                        case KeyEvent.VK_S -> nave.mover('D');
+                        case KeyEvent.VK_SPACE -> tiros.add(new Tiro(nave.getPosX() + 22, nave.getPosY()));
+                    }
+                    repaint();
+                }
+            }
+        });
+    }
+
+    private void iniciarMovimentacao() {
+        Timer timer = new Timer(50, e -> {
+            if (!jogoAtivo) return;
+
+            nave.avancar();
+
+            Iterator<Inimigo> iterInimigos = inimigos.iterator();
+            while (iterInimigos.hasNext()) {
+                Inimigo inimigo = iterInimigos.next();
+                inimigo.mover();
+                if (inimigo.getPosY() > getHeight()) iterInimigos.remove();
+                else if (inimigo.getTipo() == 1 && Math.random() < 0.04)
+                    tirosInimigos.add(new Tiro(inimigo.getPosX() + 12, inimigo.getPosY() + 30));
+            }
+
+            Iterator<Tiro> iterTiros = tiros.iterator();
+            while (iterTiros.hasNext()) {
+                Tiro tiro = iterTiros.next();
+                tiro.mover();
+                boolean removeTiro = false;
+
+                Iterator<Inimigo> iterColisao = inimigos.iterator();
+                while (iterColisao.hasNext()) {
+                    Inimigo inimigo = iterColisao.next();
+                    if (Math.abs(tiro.getPosX() - inimigo.getPosX()) < 30 &&
+                            Math.abs(tiro.getPosY() - inimigo.getPosY()) < 30) {
+                        iterColisao.remove();
+                        removeTiro = true;
+                        pontuacao += 10;
+                        break;
+                    }
+                }
+
+                if (removeTiro || tiro.getPosY() < 0) iterTiros.remove();
+            }
+
+            Iterator<Tiro> iterTirosInimigos = tirosInimigos.iterator();
+            while (iterTirosInimigos.hasNext()) {
+                Tiro tiro = iterTirosInimigos.next();
+                tiro.moverInverso();
+                if (tiro.getPosY() > getHeight()) iterTirosInimigos.remove();
+                else if (Math.abs(tiro.getPosX() - nave.getPosX()) < 30 &&
+                        Math.abs(tiro.getPosY() - nave.getPosY()) < 30) {
+                    jogoAtivo = false;
+                    JOptionPane.showMessageDialog(null, "Game Over!\nJogador: " + jogadorNome + "\nPontuação: " + pontuacao);
+                    System.exit(0);
+                }
+            }
+
+            if (Math.random() < 0.03 && inimigos.size() < LIMITE_INIMIGOS) {
+                inimigos.add(new Inimigo(getWidth()));
+            }
+
+            for (Inimigo inimigo : inimigos) {
+                if (Math.abs(inimigo.getPosX() - nave.getPosX()) < 30 &&
+                        Math.abs(inimigo.getPosY() - nave.getPosY()) < 30) {
+                    jogoAtivo = false;
+                    JOptionPane.showMessageDialog(null, "Game Over!\nJogador: " + jogadorNome + "\nPontuação: " + pontuacao);
+                    System.exit(0);
+                }
+            }
+
+            pontuacao++;
+            labelPontuacao.setText("Pontuação: " + pontuacao);
+            repaint();
+        });
+
+        timer.start();
+    }
+
+    public static void main(String[] args) {
+        new Main();
+    }
+}
